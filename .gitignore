@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/
+.tmp-data/
+.tools/
+.env
+.claude/

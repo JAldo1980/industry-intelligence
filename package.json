@@ -1,0 +1,41 @@
+{
+  "name": "industry-intelligence-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Free, sourced reports on any UK industry, built from official statistics.",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"node --watch server/index.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "test": "node --test tests/",
+    "check:sources": "node scripts/check-sources.js"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/source-serif-4": "^5.3.1",
+    "cheerio": "^1.2.0",
+    "dotenv": "^18.0.9",
+    "exceljs": "^4.4.0",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
+    "lucide-react": "^1.70.0",
+    "pdfkit": "^0.20.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "recharts": "^3.10.1",
+    "robots-parser": "^3.0.1",
+    "unpdf": "^2.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@vitejs/plugin-react": "^6.2.1",
+    "concurrently": "^10.0.7",
+    "tailwindcss": "^4.3.5",
+    "vite": "^8.3.6"
+  }
+}
