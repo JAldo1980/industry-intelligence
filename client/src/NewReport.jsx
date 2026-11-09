@@ -96,7 +96,7 @@ export function NewReport() {
           {form.companyName && <p className="text-sm mt-4">Company record included: <span className="font-medium text-ink">{form.companyName}</span> <button type="button" className="text-accent hover:underline ml-1 py-2.5 lg:py-0" onClick={() => setForm((f) => ({ ...f, companyName: '' }))}>Remove</button></p>}
           {error && <p role="alert" className="mt-5 text-sm text-bad">{error}</p>}
           <button disabled={busy} className="mt-6 w-full h-12 rounded bg-brand text-ink border border-ink font-semibold text-[15px] hover:bg-brand-strong disabled:opacity-50 disabled:cursor-not-allowed">{busy ? 'Starting…' : 'Generate Report'}</button>
-          <p className="mt-3 text-[13px] text-muted text-center">Takes about a minute. UK only.</p>
+          <p className="mt-3 text-[13px] text-muted text-center">Takes a minute or two. UK only.</p>
         </form>
       </div>
     </main>

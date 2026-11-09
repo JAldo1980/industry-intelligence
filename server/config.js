@@ -1,8 +1,7 @@
 import 'dotenv/config';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = process.cwd();
 
 export const config = {
   root,
@@ -10,11 +9,9 @@ export const config = {
   // Bound to loopback by default because the app has no user accounts.
   host: process.env.HOST || '127.0.0.1',
   dataDir: path.resolve(root, process.env.DATA_DIR || 'data'),
+  onNetlify: process.env.APP_HOST === 'netlify',
   password: process.env.APP_PASSWORD || '',
-  // Render sets RENDER=true on its servers.
-  hosted: process.env.RENDER === 'true',
   userAgent: process.env.RESEARCH_USER_AGENT || 'IndustryIntelligenceBot/1.0 (B2B market research; respects robots.txt)',
-  maxConcurrentReports: Number(process.env.MAX_CONCURRENT_REPORTS || 2),
   reportsPerHour: Number(process.env.REPORTS_PER_HOUR || 12),
   maxCompanies: Number(process.env.MAX_COMPANIES || 6),
   // Nomis's robots.txt disallows /api/v01/dataset/ although the API is publicly documented.

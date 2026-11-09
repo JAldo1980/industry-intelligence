@@ -2,30 +2,31 @@ import { useEffect, useState } from 'react';
 import { Check, CircleAlert, Loader2 } from 'lucide-react';
 import { DataReport } from './DataReport.jsx';
 
+const ACTIVE = ['queued', 'running'];
+
 export function ReportPage({ id }) {
   const [state, setState] = useState({ loading: true });
 
   useEffect(() => {
-    let source; let stop = false;
+    let timer; let stop = false; let seen = false;
     async function load() {
-      const res = await fetch(`/api/reports/${id}`);
-      if (stop) return;
-      if (!res.ok) { setState({ notFound: true }); return; }
-      const body = await res.json();
-      if (body.state === 'report') { setState({ report: body.report }); return; }
-      setState({ job: body.job });
-      if (body.job.status === 'running') {
-        source = new EventSource(`/api/reports/${id}/events`);
-        source.onmessage = (e) => {
-          const job = JSON.parse(e.data);
-          setState({ job });
-          if (job.status === 'complete') { source.close(); load(); }
-          if (job.status === 'failed' || job.status === 'cancelled') source.close();
-        };
-      } else if (body.job.status === 'complete') setTimeout(load, 500);
+      try {
+        const res = await fetch(`/api/reports/${id}`);
+        if (stop) return;
+        if (!res.ok) { setState({ notFound: true }); return; }
+        const body = await res.json();
+        if (stop) return;
+        if (body.state === 'report') { setState({ report: body.report }); return; }
+        seen = true;
+        setState({ job: body.job });
+        if (ACTIVE.includes(body.job.status)) timer = setTimeout(load, 2000);
+      } catch {
+        // A brief network failure should not end a report that is still running.
+        if (seen) timer = setTimeout(load, 4000); else if (!stop) setState({ notFound: true });
+      }
     }
-    load().catch(() => setState({ notFound: true }));
-    return () => { stop = true; source?.close(); };
+    load();
+    return () => { stop = true; clearTimeout(timer); };
   }, [id]);
 
   if (state.report) return <DataReport report={state.report} />;
@@ -67,8 +68,8 @@ function Progress({ job }) {
           </li>
         ))}
       </ol>
-      {job.status === 'running' && <p className="mt-4 text-[13px] text-muted">Stage {Math.min(done + 1, job.stages.length)} of {job.stages.length}. You can leave this page and find the finished report under Reports.</p>}
-      {job.status === 'running' && <button type="button" onClick={cancel} disabled={cancelling} className="mt-4 w-full sm:w-auto h-11 px-4 rounded border border-rule-strong bg-surface text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50">{cancelling ? 'Cancelling…' : 'Cancel report'}</button>}
+      {ACTIVE.includes(job.status) && <p className="mt-4 text-[13px] text-muted">Stage {Math.min(done + 1, job.stages.length)} of {job.stages.length}. You can leave this page and find the finished report under Reports.</p>}
+      {ACTIVE.includes(job.status) && <button type="button" onClick={cancel} disabled={cancelling} className="mt-4 w-full sm:w-auto h-11 px-4 rounded border border-rule-strong bg-surface text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50">{cancelling ? 'Cancelling…' : 'Cancel report'}</button>}
     </main>
   );
 }

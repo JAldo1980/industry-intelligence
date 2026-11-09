@@ -28,16 +28,16 @@ The app needs no settings. These are optional, and go in a `.env` file or the ho
 
 | Variable | Purpose |
 |---|---|
-| `APP_PASSWORD` | Asks for this password before showing the app, with any username. Required when hosted on Render |
+| `APP_PASSWORD` | Asks for this password, with any username, before showing any data |
 | `COMPANIES_HOUSE_API_KEY` | Uses the official API for company lookup instead of the public register. Free from <https://developer.company-information.service.gov.uk/> |
 | `NOMIS_API_ALLOWED` | Set to `true` to add BRES employment by SIC division (see Known limitations) |
-| `PORT`, `HOST`, `DATA_DIR`, `REPORTS_PER_HOUR`, `MAX_CONCURRENT_REPORTS`, `MAX_COMPANIES` | Tuning; defaults are in `.env.example` |
+| `PORT`, `HOST`, `DATA_DIR`, `REPORTS_PER_HOUR`, `MAX_COMPANIES` | Tuning; defaults are in `.env.example` |
 
-## Hosting on Render
+## Hosting on Netlify
 
-`render.yaml` sets up the app as a Render Blueprint on the free plan. Connect this repository as a new Blueprint and choose a password for `APP_PASSWORD` when asked.
+Import this repository at <https://app.netlify.com/start>. `netlify.toml` sets everything up and needs no changes. Reports run in a background function and are saved in Netlify Blobs, both of which are on the free plan.
 
-On the free plan the app sleeps when idle, so the first visit can take about a minute. Saved reports are lost when it restarts or redeploys, so download PDFs you want to keep. A paid plan with a disk, and `DATA_DIR` pointing at it, keeps them.
+Anyone with the address can use the site and see saved reports. Set `APP_PASSWORD` in the site's environment variables, then redeploy, to require a password for all data.
 
 ## Data sources
 
@@ -52,7 +52,7 @@ On the free plan the app sleeps when idle, so the first visit can take about a m
 
 ## Exports
 
-Each report offers PDF download, key findings (Markdown), copy source links, and print. Past reports are listed under Reports and stored in `data/reports/`.
+Each report offers PDF download, key findings (Markdown), copy source links, and print. Past reports are listed under Reports, and stored in `data/reports/` on a PC or Netlify Blobs when hosted.
 
 ## Tests
 
@@ -76,4 +76,4 @@ npm run check:sources
 - **Services trade:** HMRC data covers goods only. HS trade chapters are matched to SIC divisions by an approximate built-in table.
 - **Company accounts:** the app links to filed accounts but does not read the figures inside them.
 - **Nomis:** its robots.txt disallows the dataset API, so it is off by default and ONS workforce jobs are used instead.
-- **Security:** there are no user accounts. The server binds to 127.0.0.1 by default, and a hosted copy is protected by one shared password.
+- **Security:** there are no user accounts. On a PC the server binds to 127.0.0.1 by default. A hosted copy is open unless `APP_PASSWORD` is set.

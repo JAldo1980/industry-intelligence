@@ -1,94 +1,107 @@
-import { EventEmitter } from 'node:events';
 import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { config } from '../config.js';
+import { listKeys, readJson, writeJson } from './storage.js';
 import { DATA_STAGES, runDataPipeline } from '../pipeline/dataOnly.js';
 
-const dir = () => path.join(config.dataDir, 'reports');
 const ID = /^[0-9a-f-]{36}$/;
 export const validId = (id) => ID.test(String(id));
 
-const jobs = new Map();
-let running = 0;
-
-async function writeJson(file, value) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(value));
-  await fs.rename(tmp, file);
-}
+const jobKey = (id) => `jobs/${id}.json`;
+// Kept apart from the job record, which the running report keeps rewriting.
+const cancelKey = (id) => `jobs/${id}.cancel.json`;
+const ACTIVE = ['queued', 'running'];
+const STALE_MS = 16 * 60_000; // longer than the 15-minute limit on a Netlify background function
 
 export async function listReports() {
-  try {
-    const files = (await fs.readdir(dir())).filter((f) => f.endsWith('.meta.json'));
-    const metas = await Promise.all(files.map(async (f) => JSON.parse(await fs.readFile(path.join(dir(), f), 'utf8'))));
-    return metas.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  } catch { return []; }
+  const keys = (await listKeys('reports/')).filter((k) => k.endsWith('.meta.json'));
+  const metas = await Promise.all(keys.map(readJson));
+  return metas.filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function loadReport(id) {
+  return validId(id) ? readJson(`reports/${id}.json`) : null;
+}
+
+export async function getJob(id) {
   if (!validId(id)) return null;
-  try { return JSON.parse(await fs.readFile(path.join(dir(), `${id}.json`), 'utf8')); } catch { return null; }
+  const job = await readJson(jobKey(id));
+  if (!job || !ACTIVE.includes(job.status)) return job;
+  if (await readJson(cancelKey(id))) {
+    return { ...job, status: 'cancelled', stages: job.stages.map((s) => (s.status === 'running' ? { ...s, status: 'failed' } : s)) };
+  }
+  if (Date.now() - Date.parse(job.createdAt) > STALE_MS) {
+    return { ...job, status: 'failed', error: 'The report took too long and was stopped. Please try again.' };
+  }
+  return job;
 }
 
-export function getJob(id) { return jobs.get(id); }
-
-export function publicJob(job) {
-  const { events, ...rest } = job;
-  return rest;
+export async function createJob(input) {
+  const job = {
+    id: crypto.randomUUID(), status: 'queued', input, error: null, createdAt: new Date().toISOString(),
+    stages: DATA_STAGES.map((s) => ({ ...s, status: 'pending', detail: null })),
+  };
+  await writeJson(jobKey(job.id), job);
+  return job;
 }
 
-export const canStart = () => running < config.maxConcurrentReports;
+export async function failJob(id, error) {
+  const job = await readJson(jobKey(id));
+  if (job) await writeJson(jobKey(id), { ...job, status: 'failed', error });
+}
 
-/** Stops showing a running report and discards its result. Retrieval already under way finishes quietly. */
-export function cancelReport(id) {
-  const job = jobs.get(id);
-  if (!job || job.status !== 'running') return false;
-  job.status = 'cancelled';
-  job.stages.filter((s) => s.status === 'running').forEach((s) => { s.status = 'failed'; });
-  job.events.emit('update', publicJob(job));
+/** Marks a report as cancelled. The run notices at its next stage and discards its result. */
+export async function cancelJob(id) {
+  const job = await getJob(id);
+  if (!job || !ACTIVE.includes(job.status)) return false;
+  await writeJson(cancelKey(id), { at: new Date().toISOString() });
   return true;
 }
 
-export function startReport(input) {
-  const id = crypto.randomUUID();
-  const job = {
-    id, status: 'running', input, error: null, createdAt: new Date().toISOString(),
-    stages: DATA_STAGES.map((s) => ({ ...s, status: 'pending', detail: null })),
-    events: new EventEmitter(),
-  };
-  job.events.setMaxListeners(50);
-  jobs.set(id, job);
-  running++;
+/** Runs a queued report through to a saved result. It never throws, so a host will not retry a finished run. */
+export async function runJob(id) {
+  const job = await getJob(id);
+  if (!job || job.status !== 'queued') return;
+  job.status = 'running';
+  await writeJson(jobKey(id), job);
 
+  let cancelled = false;
+  let saves = Promise.resolve();
   const emit = (event) => {
-    if (job.status === 'cancelled') return;
-    if (event.type === 'stage') {
-      const s = job.stages.find((x) => x.id === event.id);
-      if (s) { s.status = event.status; if (event.detail) s.detail = event.detail; }
-    }
-    job.events.emit('update', publicJob(job));
+    if (event.type !== 'stage') return;
+    const stage = job.stages.find((s) => s.id === event.id);
+    if (stage) { stage.status = event.status; if (event.detail) stage.detail = event.detail; }
+    saves = saves.then(async () => {
+      cancelled = cancelled || Boolean(await readJson(cancelKey(id)));
+      if (!cancelled) await writeJson(jobKey(id), job);
+    }).catch((e) => console.error(`[report ${id}] progress not saved:`, e?.message));
   };
 
-  runDataPipeline(input, emit).then(async (report) => {
-    if (job.status === 'cancelled') return;
-    await writeJson(path.join(dir(), `${id}.json`), { id, createdAt: job.createdAt, input, ...report });
-    await writeJson(path.join(dir(), `${id}.meta.json`), {
+  try {
+    const report = await runDataPipeline(job.input, emit);
+    await saves;
+    if (cancelled || await readJson(cancelKey(id))) return;
+    await writeJson(`reports/${id}.json`, { id, createdAt: job.createdAt, input: job.input, ...report });
+    await writeJson(`reports/${id}.meta.json`, {
       id, createdAt: job.createdAt, businessName: report.overview.title, industry: report.overview.identifiedIndustry, market: report.overview.market, sources: report.sources.length,
     });
     job.status = 'complete';
-  }).catch((error) => {
-    if (job.status === 'cancelled') return;
+    await writeJson(jobKey(id), job);
+  } catch (error) {
     console.error(`[report ${id}]`, error?.message);
+    await saves;
+    if (cancelled) return;
     job.status = 'failed';
     job.error = error?.message || 'The report could not be completed.';
     const active = job.stages.find((s) => s.status === 'running');
     if (active) active.status = 'failed';
-  }).finally(() => {
-    running--;
-    job.events.emit('update', publicJob(job));
-    setTimeout(() => jobs.delete(id), 3_600_000).unref();
-  });
-  return job;
+    await writeJson(jobKey(id), job).catch(() => {});
+  }
+}
+
+/** A shared hourly allowance. Memory is not shared between function runs, so the count is stored. */
+export async function withinHourlyLimit(name, limit) {
+  const key = `limits/${name}-${new Date().toISOString().slice(0, 13)}.json`;
+  const used = (await readJson(key))?.used || 0;
+  if (used >= limit) return false;
+  await writeJson(key, { used: used + 1 });
+  return true;
 }
