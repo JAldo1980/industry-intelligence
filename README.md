@@ -33,11 +33,15 @@ The app needs no settings. These are optional, and go in a `.env` file or the ho
 | `NOMIS_API_ALLOWED` | Set to `true` to add BRES employment by SIC division (see Known limitations) |
 | `PORT`, `HOST`, `DATA_DIR`, `REPORTS_PER_HOUR`, `MAX_COMPANIES` | Tuning; defaults are in `.env.example` |
 
-## Hosting on Netlify
+## Hosting
 
-Import this repository at <https://app.netlify.com/start>. `netlify.toml` sets everything up and needs no changes. Reports run in a background function and are saved in Netlify Blobs, both of which are on the free plan.
+The app runs on Render's free plan using `render.yaml`, and each push to `main` redeploys it.
 
-Anyone with the address can use the site and see saved reports. Set `APP_PASSWORD` in the site's environment variables, then redeploy, to require a password for all data.
+On the free plan the app sleeps when idle, so the first visit can take about a minute. Saved reports are lost when it restarts or redeploys, so download PDFs you want to keep.
+
+Anyone with the address can use the site and see saved reports. Set `APP_PASSWORD` in the host's environment variables, then redeploy, to require a password for all data.
+
+`netlify.toml` and the `netlify` folder run the same app on Netlify, saving reports in Netlify Blobs. This needs a credit-based Netlify plan, because legacy plans do not include background functions.
 
 ## Data sources
 
@@ -52,7 +56,7 @@ Anyone with the address can use the site and see saved reports. Set `APP_PASSWOR
 
 ## Exports
 
-Each report offers PDF download, key findings (Markdown), copy source links, and print. Past reports are listed under Reports, and stored in `data/reports/` on a PC or Netlify Blobs when hosted.
+Each report offers PDF download, key findings (Markdown), copy source links, and print. Past reports are listed under Reports and stored in `data/reports/`.
 
 ## Tests
 
